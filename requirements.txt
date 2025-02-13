@@ -5,3 +5,4 @@ scipy
 ultralytics
 torch
 netifaces
+psutil
