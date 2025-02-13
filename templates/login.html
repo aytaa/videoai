@@ -1,47 +1,57 @@
 <!DOCTYPE html>
 <html lang="tr">
 <head>
-  <meta charset="UTF-8">
-  <title>Giriş Yap</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+    <meta charset="UTF-8">
+    <title>Giriş Yap</title>
+    <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-gray-100 min-h-screen flex items-center justify-center">
-  <div class="bg-white p-6 rounded shadow-md w-full max-w-sm">
+<body class="relative min-h-screen flex items-center justify-center">
+
+<!-- city.svg dosyasını arka plan olarak ekleyin -->
+<div class="fixed bottom-0 left-0 w-full h-3/5 bg-no-repeat bg-cover bg-center opacity-10"
+     style="background-image: url('{{ url_for('static', filename='city.svg') }}');">
+</div>
+
+<!-- Giriş Formu -->
+<div class="relative bg-white p-6 rounded shadow-md w-full max-w-sm z-10">
     <h1 class="text-2xl font-bold mb-4">KUPLAY AI - Giriş Yap</h1>
+
     {% with messages = get_flashed_messages() %}
-      {% if messages %}
-        <div class="text-red-500 mb-2">
-          {% for msg in messages %}
-            <p>{{ msg }}</p>
-          {% endfor %}
-        </div>
-      {% endif %}
+    {% if messages %}
+    <div class="text-red-500 mb-2">
+        {% for msg in messages %}
+        <p>{{ msg }}</p>
+        {% endfor %}
+    </div>
+    {% endif %}
     {% endwith %}
+
     <form action="{{ url_for('login') }}" method="POST">
-      <div class="mb-4">
-        <label for="username" class="block text-gray-700">Kullanıcı Adı</label>
-        <input
-          type="text"
-          name="username"
-          id="username"
-          class="border rounded w-full py-2 px-3"
-          required>
-      </div>
-      <div class="mb-4">
-        <label for="password" class="block text-gray-700">Şifre</label>
-        <input
-          type="password"
-          name="password"
-          id="password"
-          class="border rounded w-full py-2 px-3"
-          required>
-      </div>
-      <button
-        type="submit"
-        class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
-        Giriş Yap
-      </button>
+        <div class="mb-4">
+            <label for="username" class="block text-gray-700">Kullanıcı Adı</label>
+            <input
+                    type="text"
+                    name="username"
+                    id="username"
+                    class="border rounded w-full py-2 px-3"
+                    required>
+        </div>
+        <div class="mb-4">
+            <label for="password" class="block text-gray-700">Şifre</label>
+            <input
+                    type="password"
+                    name="password"
+                    id="password"
+                    class="border rounded w-full py-2 px-3"
+                    required>
+        </div>
+        <button
+                type="submit"
+                class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
+            Giriş Yap
+        </button>
     </form>
-  </div>
+</div>
+
 </body>
 </html>

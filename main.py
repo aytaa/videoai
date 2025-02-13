@@ -19,7 +19,6 @@ from ultralytics import YOLO
 # Modeli yükle
 model = YOLO("yolo11n.pt")
 
-
 # ------------------- Centroid Tracker -------------------
 class CentroidTracker:
     def __init__(self, maxDisappeared=40):
