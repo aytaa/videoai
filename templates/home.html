@@ -1,0 +1,95 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="flex flex-wrap lg:flex-nowrap gap-4">
+
+  <!-- Sol sütun: Network Info (Sabit) -->
+  <div class="w-full lg:w-1/2 bg-white border rounded shadow-sm">
+    <div class="border-b p-3">
+      <h3 class="text-lg font-semibold text-gray-700">Network Info</h3>
+    </div>
+    <table class="w-full text-sm text-gray-600">
+      <tbody>
+        <tr class="border-b">
+          <td class="px-2 py-2">Ethernet:</td>
+          <td class="px-2 py-2 text-right">{{ network.ethernet }}</td>
+        </tr>
+        <tr class="border-b">
+          <td class="px-2 py-2">Gateway:</td>
+          <td class="px-2 py-2 text-right">{{ network.gateway }}</td>
+        </tr>
+        <tr class="border-b">
+          <td class="px-2 py-2">Netmask:</td>
+          <td class="px-2 py-2 text-right">{{ network.netmask }}</td>
+        </tr>
+        <tr>
+          <td class="px-2 py-2">GSM:</td>
+          <td class="px-2 py-2 text-right">{{ network.gsm }}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Sağ sütun: System Info (Canlı Güncelleme) -->
+  <div class="w-full lg:w-1/2 bg-white border rounded shadow-sm">
+    <div class="border-b p-3">
+      <h3 class="text-lg font-semibold text-gray-700">System Info</h3>
+    </div>
+    <table class="w-full text-sm text-gray-600">
+      <tbody>
+        <tr class="border-b">
+          <td class="px-2 py-2">CPU:</td>
+          <td class="px-2 py-2 text-right" id="cpu-val">{{ system.cpu }}%</td>
+        </tr>
+        <tr class="border-b">
+          <td class="px-2 py-2">RAM:</td>
+          <td class="px-2 py-2 text-right" id="ram-val">{{ system.ram }}%</td>
+        </tr>
+        <tr class="border-b">
+          <td class="px-2 py-2">Swap:</td>
+          <td class="px-2 py-2 text-right" id="swap-val">{{ system.swap }}%</td>
+        </tr>
+        <tr class="border-b">
+          <td class="px-2 py-2">DISK:</td>
+          <td class="px-2 py-2 text-right" id="disk-val">{{ system.disk }}%</td>
+        </tr>
+        <tr class="border-b">
+          <td class="px-2 py-2">Battery Status:</td>
+          <td class="px-2 py-2 text-right" id="battery-val">{{ system.battery }}</td>
+        </tr>
+        <tr class="border-b">
+          <td class="px-2 py-2">Uptime:</td>
+          <td class="px-2 py-2 text-right" id="uptime-val">{{ system.uptime }}</td>
+        </tr>
+        <tr>
+          <td class="px-2 py-2">Date/Time:</td>
+          <td class="px-2 py-2 text-right" id="datetime-val">{{ system.datetime }}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Gerçek zamanlı güncelleme için JavaScript -->
+<script>
+  async function fetchSystemInfo() {
+    try {
+      const response = await fetch('/system_info');
+      const data = await response.json();
+
+      document.getElementById('cpu-val').textContent = data.cpu + '%';
+      document.getElementById('ram-val').textContent = data.ram + '%';
+      document.getElementById('swap-val').textContent = data.swap + '%';
+      document.getElementById('disk-val').textContent = data.disk + '%';
+      document.getElementById('battery-val').textContent = data.battery;
+      document.getElementById('uptime-val').textContent = data.uptime;
+      document.getElementById('datetime-val').textContent = data.datetime;
+    } catch (error) {
+      console.error('System info fetch error:', error);
+    }
+  }
+
+  // Her 1 saniyede bir system_info API'sini çağır ve değerleri güncelle
+  setInterval(fetchSystemInfo, 1000);
+</script>
+{% endblock %}

@@ -3,23 +3,108 @@ import cv2
 import numpy as np
 from scipy.spatial import distance as dist
 
-# PyTorch ve "safe load" ayarları
+# -----------------------------
+# PyTorch & YOLO ayarları
+# -----------------------------
 import torch
 import torch.serialization
-
-# Ultralytics içinde kullanılan sınıfları import edin
 from ultralytics.nn.tasks import DetectionModel
 from torch.nn.modules.container import Sequential
-
-# Bu sınıfları PyTorch’un güvenli yükleme (allowlist) listesine ekleyin
 torch.serialization.add_safe_globals([DetectionModel, Sequential])
-
 from ultralytics import YOLO
 
-# Modeli yükle
-model = YOLO("yolo11n.pt")
+# -----------------------------
+# Ek kütüphaneler: netifaces, psutil
+# -----------------------------
+import netifaces
+import psutil
+import time
 
-# ------------------- Centroid Tracker -------------------
+app = Flask(__name__)
+app.secret_key = "e7af6fde-a043-4ccb-bc11-56b5c2e78962"
+
+# -----------------------------
+# Global sayaçlar
+# -----------------------------
+totalCars = 0
+totalMotorcycles = 0
+stream_url = "https://hls.ibb.gov.tr/tkm4/hls/102.stream/chunklist.m3u8"
+ALLOWED_CLASSES = ['car', 'motorcycle']
+
+# -----------------------------
+# Fonksiyon: Ağ (Network) bilgisi
+# -----------------------------
+def get_network_info(interface="eth0"):
+    info = {
+        "ethernet": "N/A",
+        "gateway": "N/A",
+        "netmask": "N/A",
+        "gsm": "Not Found"
+    }
+    # Varsayılan gateway
+    try:
+        gateways = netifaces.gateways()
+        default_gateway = gateways.get('default')
+        if default_gateway:
+            gw_addr = default_gateway.get(netifaces.AF_INET)
+            if gw_addr:
+                info["gateway"] = gw_addr[0]
+    except:
+        pass
+
+    # IP / Netmask
+    try:
+        if interface in netifaces.interfaces():
+            addrs = netifaces.ifaddresses(interface).get(netifaces.AF_INET)
+            if addrs and len(addrs) > 0:
+                info["ethernet"] = addrs[0].get('addr', 'N/A')
+                info["netmask"] = addrs[0].get('netmask', 'N/A')
+    except:
+        pass
+
+    return info
+
+# -----------------------------
+# Fonksiyon: Sistem (System) bilgisi
+# -----------------------------
+def get_system_info():
+    info = {}
+    # CPU, RAM, SWAP, DISK
+    info["cpu"] = psutil.cpu_percent(interval=None)
+    info["ram"] = psutil.virtual_memory().percent
+    info["swap"] = psutil.swap_memory().percent
+    info["disk"] = psutil.disk_usage('/').percent
+
+    # Batarya (Laptop vb. cihazlarda)
+    if hasattr(psutil, "sensors_battery"):
+        battery = psutil.sensors_battery()
+        if battery is not None:
+            info["battery"] = f"{battery.percent}%"
+        else:
+            info["battery"] = "Not Found"
+    else:
+        info["battery"] = "Not Found"
+
+    # Uptime
+    uptime_seconds = time.time() - psutil.boot_time()
+    hours = int(uptime_seconds // 3600)
+    minutes = int((uptime_seconds % 3600) // 60)
+    info["uptime"] = f"{hours} hrs {minutes} min"
+
+    # Tarih/Saat
+    current_time = time.strftime("%d.%m.%Y %H:%M:%S")
+    info["datetime"] = current_time
+
+    return info
+
+# -----------------------------
+# YOLO model yükleme
+# -----------------------------
+model = YOLO("yolov8n.pt")  # YOLOv8 modeli kullanılıyor
+
+# -----------------------------
+# CentroidTracker
+# -----------------------------
 class CentroidTracker:
     def __init__(self, maxDisappeared=40):
         self.nextObjectID = 0
@@ -81,132 +166,98 @@ class CentroidTracker:
                     self.register(inputCentroids[col])
         return self.objects
 
-
-# ------------------ TrackableObject ------------------
+# -----------------------------
+# TrackableObject
+# -----------------------------
 class TrackableObject:
     def __init__(self, objectID, centroid):
         self.objectID = objectID
         self.centroids = [centroid]
         self.counted = False
 
-
-# ------------------ Flask Setup ------------------
-app = Flask(__name__)
-app.secret_key = "e7af6fde-a043-4ccb-bc11-56b5c2e78962"
-
-# Global sayaçlar
-totalCars = 0
-totalMotorcycles = 0
-
-# Varsayılan HLS akışı (İBB örnek)
-stream_url = "https://hls.ibb.gov.tr/tkm4/hls/102.stream/chunklist.m3u8"
-
-# Yalnızca bu sınıfları tespit & say
-ALLOWED_CLASSES = ['car', 'motorcycle']
-
-
+# -----------------------------
+# Video frame generator (YOLO)
+# -----------------------------
 def gen_frames():
     global totalCars, totalMotorcycles, stream_url
 
     cap = cv2.VideoCapture(stream_url)
     if not cap.isOpened():
-        print("Video akışı açılamadı!")
-        return
+        print("Video akışı açılamadı! Yeniden bağlanıyor...")
+        cap.release()
+        cap = cv2.VideoCapture(stream_url)
 
-    # Centroid tracker
     car_tracker = CentroidTracker(maxDisappeared=40)
     motorcycle_tracker = CentroidTracker(maxDisappeared=40)
     trackableCars = {}
     trackableMotorcycles = {}
 
-    ret, frame = cap.read()
-    if not ret:
-        print("İlk frame alınamadı!")
-        cap.release()
-        return
-
-    frameHeight, frameWidth = frame.shape[:2]
-    counting_line = int(frameHeight * 0.8)
-
     while True:
+        ret, frame = cap.read()
+
+        if not ret or frame is None:
+            print("Video akışı kesildi, tekrar bağlanılıyor...")
+            cap.release()
+            cap = cv2.VideoCapture(stream_url)
+            continue
+
         try:
-            results = model.predict(frame, conf=0.5, verbose=False)
+            # 1) YOLO prediction with lower confidence threshold
+            results = model.predict(frame, conf=0.3, verbose=False)
             car_centroids = []
             motorcycle_centroids = []
 
+            # 2) Bounding box çizmek ve centroid listesi oluşturmak
             if len(results) > 0:
                 det = results[0]
                 if det.boxes is not None:
                     for box in det.boxes.data.cpu().numpy():
                         x1, y1, x2, y2, conf, cls_id = box
-                        if conf < 0.5:
-                            continue
                         class_name = model.names[int(cls_id)]
                         if class_name in ALLOWED_CLASSES:
+                            # Dikdörtgen çiz (yeşil)
                             cv2.rectangle(frame, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 2)
+
+                            # Label yaz (class + confidence)
                             cv2.putText(frame, f"{class_name} {conf:.2f}", (int(x1), int(y1) - 10),
                                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+
+                            # Centroid hesapla
                             cx = int((x1 + x2) / 2)
                             cy = int((y1 + y2) / 2)
+
                             if class_name == 'car':
                                 car_centroids.append((cx, cy))
                             elif class_name == 'motorcycle':
                                 motorcycle_centroids.append((cx, cy))
 
-            # Tracker güncelle
-            car_objects = car_tracker.update(
-                np.array(car_centroids) if car_centroids else np.empty((0, 2))
-            )
-            motorcycle_objects = motorcycle_tracker.update(
-                np.array(motorcycle_centroids) if motorcycle_centroids else np.empty((0, 2))
-            )
+            # 3) Centroid Tracker update
+            car_objects = car_tracker.update(np.array(car_centroids) if car_centroids else np.empty((0, 2)))
+            motorcycle_objects = motorcycle_tracker.update(np.array(motorcycle_centroids) if motorcycle_centroids else np.empty((0, 2)))
 
-            # Araba sayımı
+            # 4) Her bir Araba objesi
             for (objectID, centroid) in car_objects.items():
                 to = trackableCars.get(objectID, None)
                 if to is None:
                     to = TrackableObject(objectID, centroid)
+                    totalCars += 1  # Yeni araba tespit edildi, sayacı artır
                 else:
                     to.centroids.append(centroid)
-                    if not to.counted:
-                        # Basit mantık: centroid Y > counting_line => say
-                        y_coords = [c[1] for c in to.centroids]
-                        direction = centroid[1] - np.mean(y_coords)
-                        if direction > 0 and centroid[1] > counting_line:
-                            totalCars += 1
-                            to.counted = True
+
                 trackableCars[objectID] = to
 
-                # Debug çizim
+                # ID yaz (kırmızı)
                 cv2.putText(frame, f"Car ID {objectID}", (centroid[0] - 10, centroid[1] - 10),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
                 cv2.circle(frame, (centroid[0], centroid[1]), 4, (0, 0, 255), -1)
 
-            # Motorsiklet sayımı
-            for (objectID, centroid) in motorcycle_objects.items():
-                to = trackableMotorcycles.get(objectID, None)
-                if to is None:
-                    to = TrackableObject(objectID, centroid)
-                else:
-                    to.centroids.append(centroid)
-                    if not to.counted:
-                        y_coords = [c[1] for c in to.centroids]
-                        direction = centroid[1] - np.mean(y_coords)
-                        if direction > 0 and centroid[1] > counting_line:
-                            totalMotorcycles += 1
-                            to.counted = True
-                trackableMotorcycles[objectID] = to
+            # 5) Sayaçları ekrana yaz
+            cv2.putText(frame, f"Total Cars: {totalCars}", (10, 30),
+                        cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+            cv2.putText(frame, f"Total Motorcycles: {totalMotorcycles}", (10, 60),
+                        cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
 
-                cv2.putText(frame, f"Motor ID {objectID}", (centroid[0] - 10, centroid[1] - 10),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
-                cv2.circle(frame, (centroid[0], centroid[1]), 4, (255, 0, 0), -1)
-
-            # Sayım çizgisi & sayaç
-            cv2.line(frame, (0, counting_line), (frameWidth, counting_line), (0, 255, 255), 2)
-            cv2.putText(frame, f"Araba: {totalCars}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
-            cv2.putText(frame, f"Motor: {totalMotorcycles}", (10, 70), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
-
-            # MJPEG çıkışı
+            # 6) Görüntüyü MJPEG olarak gönder
             ret2, buffer = cv2.imencode('.jpg', frame)
             if not ret2:
                 continue
@@ -214,40 +265,48 @@ def gen_frames():
             yield (b'--frame\r\n'
                    b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
 
-            # Sonraki kare
-            ret, frame = cap.read()
-            if not ret:
-                print("Akış koptu veya bitti; yeniden başlatılıyor...")
-                cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-                ret, frame = cap.read()
-                if not ret:
-                    break
         except Exception as e:
             print(f"[Hata]: {str(e)}")
             break
 
     cap.release()
 
+# -----------------------------
+# Rotalar
+# -----------------------------
 @app.route('/')
-def index():
+def home():
     if not session.get('logged_in'):
         return redirect(url_for('login'))
-    return render_template("index.html", stream_url=stream_url)
+    # İlk açılışta gösterilecek veriler
+    network_data = get_network_info(interface="eth0")
+    system_data = get_system_info()
+
+    return render_template("home.html", network=network_data, system=system_data)
+
+@app.route('/live')
+def live():
+    if not session.get('logged_in'):
+        return redirect(url_for('login'))
+    return render_template("live.html", stream_url=stream_url)
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
+    if session.get('logged_in'):
+        return redirect(url_for('home'))
+
     if request.method == 'POST':
         username = request.form.get('username')
         password = request.form.get('password')
         if username == 'adem' and password == 'Adem123456':
             session['logged_in'] = True
             session['username'] = username
-            return redirect(url_for('index'))
+            return redirect(url_for('home'))
         else:
             flash('Yanlış kullanıcı adı veya şifre!')
             return redirect(url_for('login'))
-    return render_template("login.html")
 
+    return render_template("login.html")
 
 @app.route('/logout')
 def logout():
@@ -262,29 +321,36 @@ def set_stream():
         stream_url = url.strip()
         totalCars = 0
         totalMotorcycles = 0
-        print("Yeni stream URL ayarlandı:", stream_url)
-    return redirect(url_for('index'))
-
+    return redirect(url_for('live'))
 
 @app.route('/video_feed')
 def video_feed():
-    return Response(gen_frames(),
-                    mimetype='multipart/x-mixed-replace; boundary=frame')
-
+    return Response(gen_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
 @app.route('/reset_counts', methods=['POST'])
 def reset_counts():
     global totalCars, totalMotorcycles
     totalCars = 0
     totalMotorcycles = 0
-    print("Sayımlar sıfırlandı!")
-    return redirect(url_for('index'))
-
+    return redirect(url_for('live'))
 
 @app.route('/counts')
 def counts():
-    return jsonify({"car": totalCars, "motorcycle": totalMotorcycles})
+    return jsonify({
+        "car": totalCars,
+        "motorcycle": totalMotorcycles
+    })
 
+# -----------------------------
+# Yeni Rota: Gerçek zamanlı sistem bilgisi JSON
+# -----------------------------
+@app.route('/system_info')
+def system_info():
+    info = get_system_info()
+    return jsonify(info)
 
+# -----------------------------
+# Uygulama çalıştırma
+# -----------------------------
 if __name__ == '__main__':
     app.run(debug=True, port=3000, host='0.0.0.0')
