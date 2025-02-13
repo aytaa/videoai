@@ -1,4 +1,4 @@
-from flask import Flask, Response, render_template, jsonify, request, redirect, url_for
+from flask import Flask, Response, render_template, session, flash, jsonify, request, redirect, url_for
 import cv2
 import numpy as np
 from scipy.spatial import distance as dist
@@ -19,12 +19,13 @@ from ultralytics import YOLO
 # Modeli yükle
 model = YOLO("yolo11n.pt")
 
+
 # ------------------- Centroid Tracker -------------------
 class CentroidTracker:
     def __init__(self, maxDisappeared=40):
         self.nextObjectID = 0
-        self.objects = {}       # objectID -> centroid
-        self.disappeared = {}   # objectID -> kaç frame görünmedi
+        self.objects = {}
+        self.disappeared = {}
         self.maxDisappeared = maxDisappeared
 
     def register(self, centroid):
@@ -81,6 +82,7 @@ class CentroidTracker:
                     self.register(inputCentroids[col])
         return self.objects
 
+
 # ------------------ TrackableObject ------------------
 class TrackableObject:
     def __init__(self, objectID, centroid):
@@ -88,8 +90,10 @@ class TrackableObject:
         self.centroids = [centroid]
         self.counted = False
 
+
 # ------------------ Flask Setup ------------------
 app = Flask(__name__)
+app.secret_key = "e7af6fde-a043-4ccb-bc11-56b5c2e78962"
 
 # Global sayaçlar
 totalCars = 0
@@ -101,9 +105,10 @@ stream_url = "https://hls.ibb.gov.tr/tkm4/hls/102.stream/chunklist.m3u8"
 # Yalnızca bu sınıfları tespit & say
 ALLOWED_CLASSES = ['car', 'motorcycle']
 
+
 def gen_frames():
     global totalCars, totalMotorcycles, stream_url
-    
+
     cap = cv2.VideoCapture(stream_url)
     if not cap.isOpened():
         print("Video akışı açılamadı!")
@@ -122,7 +127,7 @@ def gen_frames():
         return
 
     frameHeight, frameWidth = frame.shape[:2]
-    counting_line = int(frameHeight * 0.5)  # Sayım çizgisi
+    counting_line = int(frameHeight * 0.8)
 
     while True:
         try:
@@ -139,9 +144,9 @@ def gen_frames():
                             continue
                         class_name = model.names[int(cls_id)]
                         if class_name in ALLOWED_CLASSES:
-                            cv2.rectangle(frame, (int(x1), int(y1)), (int(x2), int(y2)), (0,255,0), 2)
-                            cv2.putText(frame, f"{class_name} {conf:.2f}", (int(x1), int(y1)-10),
-                                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,255,0), 2)
+                            cv2.rectangle(frame, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 2)
+                            cv2.putText(frame, f"{class_name} {conf:.2f}", (int(x1), int(y1) - 10),
+                                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
                             cx = int((x1 + x2) / 2)
                             cy = int((y1 + y2) / 2)
                             if class_name == 'car':
@@ -174,9 +179,9 @@ def gen_frames():
                 trackableCars[objectID] = to
 
                 # Debug çizim
-                cv2.putText(frame, f"Car ID {objectID}", (centroid[0]-10, centroid[1]-10),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,0,255), 2)
-                cv2.circle(frame, (centroid[0], centroid[1]), 4, (0,0,255), -1)
+                cv2.putText(frame, f"Car ID {objectID}", (centroid[0] - 10, centroid[1] - 10),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
+                cv2.circle(frame, (centroid[0], centroid[1]), 4, (0, 0, 255), -1)
 
             # Motorsiklet sayımı
             for (objectID, centroid) in motorcycle_objects.items():
@@ -193,14 +198,14 @@ def gen_frames():
                             to.counted = True
                 trackableMotorcycles[objectID] = to
 
-                cv2.putText(frame, f"Motor ID {objectID}", (centroid[0]-10, centroid[1]-10),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,0,0), 2)
-                cv2.circle(frame, (centroid[0], centroid[1]), 4, (255,0,0), -1)
+                cv2.putText(frame, f"Motor ID {objectID}", (centroid[0] - 10, centroid[1] - 10),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
+                cv2.circle(frame, (centroid[0], centroid[1]), 4, (255, 0, 0), -1)
 
             # Sayım çizgisi & sayaç
-            cv2.line(frame, (0, counting_line), (frameWidth, counting_line), (0,255,255), 2)
-            cv2.putText(frame, f"Araba: {totalCars}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,255), 2)
-            cv2.putText(frame, f"Motor: {totalMotorcycles}", (10, 70), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,255), 2)
+            cv2.line(frame, (0, counting_line), (frameWidth, counting_line), (0, 255, 255), 2)
+            cv2.putText(frame, f"Araba: {totalCars}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+            cv2.putText(frame, f"Motor: {totalMotorcycles}", (10, 70), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
 
             # MJPEG çıkışı
             ret2, buffer = cv2.imencode('.jpg', frame)
@@ -226,7 +231,29 @@ def gen_frames():
 
 @app.route('/')
 def index():
+    if not session.get('logged_in'):
+        return redirect(url_for('login'))
     return render_template("index.html", stream_url=stream_url)
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+        if username == 'adem' and password == 'Adem123456':
+            session['logged_in'] = True
+            session['username'] = username
+            return redirect(url_for('index'))
+        else:
+            flash('Yanlış kullanıcı adı veya şifre!')
+            return redirect(url_for('login'))
+    return render_template("login.html")
+
+
+@app.route('/logout')
+def logout():
+    session.clear()
+    return redirect(url_for('login'))
 
 @app.route('/set_stream', methods=['POST'])
 def set_stream():
@@ -239,10 +266,12 @@ def set_stream():
         print("Yeni stream URL ayarlandı:", stream_url)
     return redirect(url_for('index'))
 
+
 @app.route('/video_feed')
 def video_feed():
     return Response(gen_frames(),
                     mimetype='multipart/x-mixed-replace; boundary=frame')
+
 
 @app.route('/reset_counts', methods=['POST'])
 def reset_counts():
@@ -252,9 +281,11 @@ def reset_counts():
     print("Sayımlar sıfırlandı!")
     return redirect(url_for('index'))
 
+
 @app.route('/counts')
 def counts():
     return jsonify({"car": totalCars, "motorcycle": totalMotorcycles})
+
 
 if __name__ == '__main__':
     app.run(debug=True, port=3000, host='0.0.0.0')

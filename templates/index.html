@@ -2,9 +2,7 @@
 
 {% block content %}
 <div class="mb-3">
-  <!-- URL input formu (flex düzeni) -->
   <form action="{{ url_for('set_stream') }}" method="POST" class="mt-4">
-    <!-- Tek satırda label, input ve buton, aynı yükseklik -->
     <div class="flex items-stretch gap-2">
       <label 
         for="stream_url" 
