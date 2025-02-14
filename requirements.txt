@@ -6,3 +6,5 @@ ultralytics
 torch
 netifaces
 psutil
+mysql-connector-python
+bcrypt

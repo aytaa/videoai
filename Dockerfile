@@ -6,18 +6,21 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 WORKDIR /app
 
-# Paket listelerini güncelle, gerekli paketleri kur ve apt cache'ini temizle
+# Sistem paketlerini güncelle ve gerekli paketleri kur
 RUN apt-get update && \
-    apt-get install -y ffmpeg libsm6 libxext6 libgl1-mesa-glx && \
+    apt-get install -y \
+      gcc \
+      build-essential \
+      ffmpeg \
+      libsm6 \
+      libxext6 \
+      libgl1-mesa-glx && \
     rm -rf /var/lib/apt/lists/* && \
     echo $CACHE_DATE
 
 # Gereksinimler dosyasını kopyala ve bağımlılıkları yükle
 COPY requirements.txt ./
 RUN pip install --upgrade pip && pip install -r requirements.txt
-RUN apt-get install -y ffmpeg libsm6 libxext6 libgl1-mesa-glx && \
-rm -rf /var/lib/apt/lists/* && \
-echo $CACHE_DATE
 
 # Tüm uygulama dosyalarını kopyala
 COPY . .

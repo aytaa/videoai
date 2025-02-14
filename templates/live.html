@@ -4,22 +4,12 @@
 <div class="mb-3">
     <form action="{{ url_for('set_stream') }}" method="POST" class="mt-4">
         <div class="flex items-stretch gap-2">
-            <label
-                    for="stream_url"
-                    class="flex items-center text-sm text-gray-600 whitespace-nowrap px-2 h-10">
+            <label for="stream_url" class="flex items-center text-sm text-gray-600 whitespace-nowrap px-2 h-10">
                 m3u8 URL:
             </label>
-            <input
-                    id="stream_url"
-                    name="stream_url"
-                    type="text"
-                    placeholder="m3u8 URL giriniz"
-                    value="{{ stream_url }}"
-                    class="border rounded text-sm w-full h-10 px-2"
-            />
-            <button
-                    type="submit"
-                    class="bg-blue-600 text-white rounded text-sm h-10 px-3 hover:bg-blue-700">
+            <input id="stream_url" name="stream_url" type="text" placeholder="m3u8 URL giriniz" value="{{ stream_url }}"
+                   class="border rounded text-sm w-full h-10 px-2"/>
+            <button type="submit" class="bg-blue-600 text-white rounded text-sm h-10 px-3 hover:bg-blue-700">
                 Akışı Güncelle
             </button>
         </div>
@@ -27,10 +17,14 @@
 </div>
 
 <div class="flex flex-wrap lg:flex-nowrap gap-4">
-    <!-- Sol Kolon (Video) -->
     <div class="w-full lg:w-3/4 bg-white rounded shadow p-4">
-        <div class="mb-2">
-            <img src="{{ url_for('video_feed') }}" alt="Video Akışı" class="w-full rounded shadow">
+        <div class="mb-2 relative">
+            <img id="video-stream" src="{{ url_for('video_feed') }}" alt="Video Akışı"
+                 class="w-full rounded shadow" onerror="handleError()">
+            <!-- Başlangıçta gizli olan overlay -->
+            <div id="error-overlay" class="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50 hidden">
+                <span class="text-white text-xl">Yüklenemedi</span>
+            </div>
         </div>
     </div>
 
@@ -79,6 +73,10 @@
 </div>
 
 <script>
+    function handleError() {
+        document.getElementById("error-overlay").classList.remove("hidden");
+    }
+
     async function fetchCounts() {
         try {
             let response = await fetch('/counts');
