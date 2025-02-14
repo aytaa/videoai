@@ -75,7 +75,6 @@ def get_system_info():
     info["swap"] = psutil.swap_memory().percent
     info["disk"] = psutil.disk_usage('/').percent
 
-    # Batarya (Laptop vb. cihazlarda)
     if hasattr(psutil, "sensors_battery"):
         battery = psutil.sensors_battery()
         if battery is not None:
@@ -100,7 +99,7 @@ def get_system_info():
 # -----------------------------
 # YOLO model yükleme
 # -----------------------------
-model = YOLO("yolov8n.pt")  # YOLOv8 modeli kullanılıyor
+model = YOLO("yolo11n.pt")  # YOLO11N modeli kullanılıyor
 
 # -----------------------------
 # CentroidTracker
