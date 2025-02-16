@@ -117,7 +117,6 @@ model = YOLO("yolo11n.pt")
 model.half().fuse().eval()
 _ = model(torch.zeros(1, 3, 640, 640).half().to(device))
 
-
 # -----------------------------
 # CentroidTracker
 # -----------------------------
@@ -200,122 +199,108 @@ class TrackableObject:
 def gen_frames():
     global totalCars, totalMotorcycles, totalTrucks, totalBus, stream_url
 
-    # Video yakalama için daha uzun timeout
-    cap = cv2.VideoCapture(stream_url)
-    cap.set(cv2.CAP_PROP_BUFFERSIZE, 3)  # Buffer size'ı ayarla
-
-    if not cap.isOpened():
-        print("Video akışı açılamadı! Yeniden bağlanıyor...")
-        time.sleep(1)  # Yeniden bağlanma öncesi bekle
-        cap.release()
-        cap = cv2.VideoCapture(stream_url)
+    # GPU Optimize Video Yakalama
+    cap = cv2.VideoCapture(stream_url, cv2.CAP_FFMPEG)
+    cap.set(cv2.CAP_PROP_BUFFERSIZE, 2)
+    cap.set(cv2.CAP_PROP_HW_ACCELERATION, cv2.VIDEO_ACCELERATION_ANY)
 
     # Tracker'lar
-    trackers = {
-        'car': CentroidTracker(maxDisappeared=5),
-        'motorcycle': CentroidTracker(maxDisappeared=5),
-        'truck': CentroidTracker(maxDisappeared=5),
-        'bus': CentroidTracker(maxDisappeared=5)
-    }
+    trackers = {cls: CentroidTracker(maxDisappeared=5) for cls in ALLOWED_CLASSES}
+    trackable_objects = {cls: {} for cls in ALLOWED_CLASSES}
 
-    trackable_objects = {
-        'car': {},
-        'motorcycle': {},
-        'truck': {},
-        'bus': {}
-    }
+    # GPU Optimizasyonları
+    frame_skip = 2
+    batch_size = 4
+    frame_buffer = []
+    device = torch.device("cuda:0")
 
-    # Frame işleme için sayaç
-    frame_count = 0
-    skip_frames = 2
+    # Model Warmup
+    _ = model(torch.zeros((1, 3, 640, 640)).half().to(device))
 
     while True:
         try:
-            ret, frame = cap.read()
-            if not ret or frame is None:
-                print("Video akışı kesildi, tekrar bağlanılıyor...")
-                time.sleep(1)
-                cap.release()
-                cap = cv2.VideoCapture(stream_url)
-                continue
+            # Batch boyutuna kadar frame topla
+            while len(frame_buffer) < batch_size:
+                ret, frame = cap.read()
+                if ret:
+                    frame_buffer.append(frame)
+                else:
+                    cap.release()
+                    cap = cv2.VideoCapture(stream_url, cv2.CAP_FFMPEG)
+                    continue
 
-            frame_count += 1
-            process_this_frame = frame_count % skip_frames == 0
+            # GPU'da Batch İşleme
+            with torch.no_grad(), torch.cuda.amp.autocast():
+                input_tensor = torch.stack([
+                    torch.from_numpy(
+                        cv2.resize(cv2.cvtColor(f, cv2.COLOR_BGR2RGB), (640, 640))
+                    ).permute(2, 0, 1).half().to(device) / 255.0
+                    for f in frame_buffer
+                ])
 
-            if process_this_frame:
-                # YOLO tahminini yap
-                with torch.no_grad():  # Gradient hesaplamasını devre dışı bırak
-                    results = model.predict(frame, conf=0.35, verbose=False)
+                results = model.predict(input_tensor,
+                                        conf=0.35,
+                                        device=device,
+                                        classes=[2, 3, 5, 7],  # DÜZELTME: Parantez eklendi
+                                        verbose=False)
 
-                centroids = {class_name: [] for class_name in ALLOWED_CLASSES}
+            # Sonuçları İşle
+            for i, det in enumerate(results):
+                frame = frame_buffer[i]
+                centroids = {cls: [] for cls in ALLOWED_CLASSES}
 
-                if len(results) > 0:
-                    det = results[0]
-                    if det.boxes is not None:
-                        boxes = det.boxes.data.cpu().numpy()
-                        for box in boxes:
-                            x1, y1, x2, y2, conf, cls_id = box
-                            class_name = model.names[int(cls_id)]
+                if det.boxes is not None:
+                    boxes = det.boxes.xyxy.cpu().numpy()
+                    classes = det.boxes.cls.cpu().numpy()
 
-                            if class_name in ALLOWED_CLASSES:
-                                # Bounding box ve etiket çizimi
-                                cv2.rectangle(frame, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 2)
-                                cv2.putText(frame, f"{class_name}", (int(x1), int(y1) - 10),
-                                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+                    for box, cls_id in zip(boxes, classes):
+                        class_name = model.names[int(cls_id)]
+                        if class_name in ALLOWED_CLASSES:
+                            x1, y1, x2, y2 = map(int, box)
+                            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                            centroids[class_name].append(((x1 + x2) // 2, (y1 + y2) // 2))
 
-                                # Centroid hesaplama
-                                cx = int((x1 + x2) / 2)
-                                cy = int((y1 + y2) / 2)
-                                centroids[class_name].append((cx, cy))
+                # DÜZELTME: Parantez hatası giderildi
+                for cls in ALLOWED_CLASSES:
+                    current_centroids = np.array(centroids[cls]) if centroids[cls] else np.empty((0, 2))
+                    objects = trackers[cls].update(current_centroids)
 
-                # Her sınıf için tracker güncelleme ve nesne sayma
-                for class_name in ALLOWED_CLASSES:
-                    current_centroids = np.array(centroids[class_name]) if centroids[class_name] else np.empty((0, 2))
-                    objects = trackers[class_name].update(current_centroids)
+                    for obj_id, centroid in objects.items():
+                        if obj_id not in trackable_objects[cls]:
+                            globals()[f'total{cls.capitalize()}'] += 1
+                            trackable_objects[cls][obj_id] = TrackableObject(obj_id, centroid)
 
-                    for (objectID, centroid) in objects.items():
-                        to = trackable_objects[class_name].get(objectID, None)
+                # Sayaç Görüntüleme
+                y_pos = 30
+                for cls in ALLOWED_CLASSES:
+                    cv2.putText(frame,
+                                f"{cls.capitalize()}: {globals()[f'total{cls.capitalize()}']}",
+                                (10, y_pos),
+                                cv2.FONT_HERSHEY_SIMPLEX,
+                                0.7,
+                                (0, 255, 0),
+                                2)
+                    y_pos += 30
 
-                        if to is None:
-                            to = TrackableObject(objectID, centroid)
-                            if class_name == 'car':
-                                totalCars += 1
-                            elif class_name == 'motorcycle':
-                                totalMotorcycles += 1
-                            elif class_name == 'truck':
-                                totalTrucks += 1
-                            elif class_name == 'bus':
-                                totalBus += 1
-                        else:
-                            to.centroids.append(centroid)
-                        trackable_objects[class_name][objectID] = to
+                # Frame Kodlama
+                _, buffer = cv2.imencode('.jpg', frame, [
+                    cv2.IMWRITE_JPEG_QUALITY, 70,
+                    cv2.IMWRITE_JPEG_OPTIMIZE, 1
+                ])
+                yield (b'--frame\r\n'
+                       b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
 
-            # Sayaçları göster
-            cv2.putText(frame, f"Total Cars: {totalCars}", (10, 30),
-                        cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
-            cv2.putText(frame, f"Total Motorcycles: {totalMotorcycles}", (10, 60),
-                        cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
-            cv2.putText(frame, f"Total Trucks: {totalTrucks}", (10, 90),
-                        cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
-            cv2.putText(frame, f"Total Buses: {totalBus}", (10, 120),
-                        cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 165, 255), 2)
-
-            # Frame'i JPEG formatında kodla ve gönder
-            success, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
-            if not success:
-                continue
-
-            frame_bytes = buffer.tobytes()
-            yield (b'--frame\r\n'
-                   b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
+            frame_buffer.clear()
+            torch.cuda.empty_cache()
 
         except Exception as e:
-            print(f"[Hata]: {str(e)}")
-            time.sleep(0.1)  # Hata durumunda kısa bir bekleme
+            print(f"Hata: {str(e)}")
+            frame_buffer.clear()
+            cap.release()
+            cap = cv2.VideoCapture(stream_url, cv2.CAP_FFMPEG)
             continue
 
     cap.release()
-
 
 # -----------------------------
 # Rotalar
