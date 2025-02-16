@@ -58,6 +58,19 @@
           <td class="px-2 py-2 text-right" id="battery-val">{{ system.battery }}</td>
         </tr>
         <tr class="border-b">
+          <td class="px-2 py-2">GPU Info:</td>
+          <td class="px-2 py-2 text-right" id="gpu-val">
+            {% if system.gpu is string %}
+              {{ system.gpu }}
+            {% else %}
+              {% for gpu in system.gpu %}
+                GPU {{ gpu.id }} ({{ gpu.name }}): Load {{ gpu.load }}, Utilization {{ gpu.utilization }}, Memory: {{ gpu.used_memory }} / {{ gpu.total_memory }}, Temp: {{ gpu.temperature }}
+                {% if not loop.last %}<br/>{% endif %}
+              {% endfor %}
+            {% endif %}
+          </td>
+        </tr>
+        <tr class="border-b">
           <td class="px-2 py-2">Uptime:</td>
           <td class="px-2 py-2 text-right" id="uptime-val">{{ system.uptime }}</td>
         </tr>
@@ -84,6 +97,21 @@
       document.getElementById('battery-val').textContent = data.battery;
       document.getElementById('uptime-val').textContent = data.uptime;
       document.getElementById('datetime-val').textContent = data.datetime;
+
+      // GPU bilgilerini güncelle
+      let gpuHTML = '';
+      if (typeof data.gpu === 'string') {
+        gpuHTML = data.gpu;
+      } else if (Array.isArray(data.gpu)) {
+        data.gpu.forEach((gpu, idx) => {
+          gpuHTML += `GPU ${gpu.id} (${gpu.name}): Load ${gpu.load}, Utilization ${gpu.utilization}, Memory: ${gpu.used_memory} / ${gpu.total_memory}, Temp: ${gpu.temperature}`;
+          if (idx !== data.gpu.length - 1) {
+            gpuHTML += '<br/>';
+          }
+        });
+      }
+      document.getElementById('gpu-val').innerHTML = gpuHTML;
+
     } catch (error) {
       console.error('System info fetch error:', error);
     }

@@ -24,6 +24,7 @@ import time
 
 app = Flask(__name__)
 app.secret_key = "e7af6fde-a043-4ccb-bc11-56b5c2e78962"
+device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 # -----------------------------
 # Global sayaçlar
@@ -74,38 +75,48 @@ def get_network_info(interface="eth0"):
 # Fonksiyon: Sistem (System) bilgisi
 # -----------------------------
 def get_system_info():
-    info = {}
-    # CPU, RAM, SWAP, DISK
-    info["cpu"] = psutil.cpu_percent(interval=None)
-    info["ram"] = psutil.virtual_memory().percent
-    info["swap"] = psutil.swap_memory().percent
-    info["disk"] = psutil.disk_usage('/').percent
-
-    if hasattr(psutil, "sensors_battery"):
-        battery = psutil.sensors_battery()
-        if battery is not None:
-            info["battery"] = f"{battery.percent}%"
+    info = {"cpu": psutil.cpu_percent(interval=None), "ram": psutil.virtual_memory().percent,
+            "swap": psutil.swap_memory().percent, "disk": psutil.disk_usage('/').percent}
+    try:
+        import GPUtil
+        gpus = GPUtil.getGPUs()
+        if gpus:
+            info["gpu"] = []
+            for gpu in gpus:
+                info["gpu"].append({
+                    "id": gpu.id,
+                    "name": gpu.name,
+                    "load": f"{gpu.load * 100:.1f}%",
+                    "free_memory": f"{gpu.memoryFree}MB",
+                    "used_memory": f"{gpu.memoryUsed}MB",
+                    "total_memory": f"{gpu.memoryTotal}MB",
+                    "temperature": f"{gpu.temperature}°C",
+                    "utilization": f"{gpu.utilization * 100:.1f}%"
+                })
         else:
-            info["battery"] = "Not Found"
-    else:
-        info["battery"] = "Not Found"
+            info["gpu"] = "No GPU found"
+    except Exception as e:
+        info["gpu"] = f"Error fetching GPU info: {str(e)}"
 
-    # Uptime
+    # Uptime, Tarih/Saat bilgisi
     uptime_seconds = time.time() - psutil.boot_time()
     hours = int(uptime_seconds // 3600)
     minutes = int((uptime_seconds % 3600) // 60)
     info["uptime"] = f"{hours} hrs {minutes} min"
-
-    # Tarih/Saat
     current_time = time.strftime("%d.%m.%Y %H:%M:%S")
     info["datetime"] = current_time
 
     return info
 
+
 # -----------------------------
 # YOLO model yükleme
 # -----------------------------
-model = YOLO("yolo11n.pt")  # YOLO11N modeli kullanılıyor
+
+model = YOLO("yolo11n.pt")
+model.half().fuse().eval()
+_ = model(torch.zeros(1, 3, 640, 640).half().to(device))
+
 
 # -----------------------------
 # CentroidTracker
@@ -171,6 +182,7 @@ class CentroidTracker:
                     self.register(inputCentroids[col])
         return self.objects
 
+
 # -----------------------------
 # TrackableObject
 # -----------------------------
@@ -179,6 +191,7 @@ class TrackableObject:
         self.objectID = objectID
         self.centroids = [centroid]
         self.counted = False
+
 
 # -----------------------------
 # Video frame generator (YOLO)
@@ -520,8 +533,10 @@ def system_info():
 def not_found(error):
     return render_template("404.html"), 404
 
+
 # -----------------------------
 # Uygulama çalıştırma
 # -----------------------------
 if __name__ == '__main__':
+    torch.backends.cudnn.benchmark = True
     app.run(debug=True, port=3000, host='0.0.0.0')
