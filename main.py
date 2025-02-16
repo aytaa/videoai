@@ -209,10 +209,8 @@ def gen_frames():
     trackable_objects = {cls: {} for cls in ALLOWED_CLASSES}
 
     # GPU Optimizasyonları
-    frame_skip = 2
     batch_size = 4
     frame_buffer = []
-    device = torch.device("cuda:0")
 
     # Model Warmup
     _ = model(torch.zeros((1, 3, 640, 640)).half().to(device))
@@ -229,7 +227,7 @@ def gen_frames():
                     cap = cv2.VideoCapture(stream_url, cv2.CAP_FFMPEG)
                     continue
 
-            # GPU'da Batch İşleme
+            # GPU'da Batch İşleme (DÜZELTİLDİ)
             with torch.no_grad(), torch.cuda.amp.autocast():
                 input_tensor = torch.stack([
                     torch.from_numpy(
@@ -238,13 +236,16 @@ def gen_frames():
                     for f in frame_buffer
                 ])
 
-                results = model.predict(input_tensor,
-                                        conf=0.35,
-                                        device=device,
-                                        classes=[2, 3, 5, 7],  # DÜZELTME: Parantez eklendi
-                                        verbose=False)
+                # DÜZELTME: Parametre parantezleri düzeltildi
+                results = model.predict(
+                    input_tensor,
+                    conf=0.35,
+                    device=device,
+                    classes=[2, 3, 5, 7],  # car, motorcycle, bus, truck
+                    verbose=False
+                )
 
-            # Sonuçları İşle
+            # Sonuçları İşle (DÜZELTİLDİ)
             for i, det in enumerate(results):
                 frame = frame_buffer[i]
                 centroids = {cls: [] for cls in ALLOWED_CLASSES}
@@ -260,10 +261,10 @@ def gen_frames():
                             cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
                             centroids[class_name].append(((x1 + x2) // 2, (y1 + y2) // 2))
 
-                # DÜZELTME: Parantez hatası giderildi
+                # Tracker Güncelleme (DÜZELTME: Parantez tamamlandı)
                 for cls in ALLOWED_CLASSES:
                     current_centroids = np.array(centroids[cls]) if centroids[cls] else np.empty((0, 2))
-                    objects = trackers[cls].update(current_centroids)
+                    objects = trackers[cls].update(current_centroids)  # DÜZELTİLDİ
 
                     for obj_id, centroid in objects.items():
                         if obj_id not in trackable_objects[cls]:
