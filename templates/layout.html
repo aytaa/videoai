@@ -12,15 +12,69 @@
         <div class="text-2xl font-bold text-blue-600">KUPLAY AI</div>
         <div class="flex-grow">
             <ul class="flex justify-center space-x-4">
-                <li><a href="/" class="text-gray-600 hover:text-gray-900">Ana Ekran</a></li>
-                <li><a href="/live" class="text-gray-600 hover:text-gray-900">Kamera</a></li>
-                <li><a href="#" class="text-gray-600 hover:text-gray-900">Ayarlar</a></li>
+                <li>
+                    <a href="/"
+                       class="{% if active_page == 'home' %}text-blue-600{% else %}text-gray-600 hover:text-gray-900{% endif %}">
+                        Ana Ekran
+                    </a>
+                </li>
+                <li>
+                    <a href="/live"
+                       class="{% if active_page == 'live' %}text-blue-600{% else %}text-gray-600 hover:text-gray-900{% endif %}">
+                        Kamera
+                    </a>
+                </li>
+                <li class="relative">
+                    <a href="#" id="settings-link"
+                       class="{% if active_page == 'settings_users' or active_page == 'settings_cameras' or active_page == 'settings_licence' %}text-blue-600{% else %}text-gray-600 hover:text-gray-900{% endif %}">
+                        Ayarlar
+                    </a>
+                    <ul id="settings-dropdown" class="absolute left-0 mt-1 w-48 bg-white shadow rounded z-10 hidden">
+                        <li class="{% if active_page == 'settings_users' %}bg-gray-200{% endif %}">
+                            <a href="/settings/user" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                                <img src="{{ url_for('static', filename='users.svg') }}" alt="Kullanıcı"
+                                     class="inline-block w-4 h-4 mr-1">
+                                Kullanıcı Ayarları
+                            </a>
+                        </li>
+                        <li class="{% if active_page == 'settings_cameras' %}bg-gray-200{% endif %}">
+                            <a href="/settings/cameras" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                                <img src="{{ url_for('static', filename='camera.svg') }}" alt="Kamera"
+                                     class="inline-block w-4 h-4 mr-1">
+                                Kamera Ayarları
+                            </a>
+                        </li>
+                        <li class="{% if active_page == 'settings_licence' %}bg-gray-200{% endif %}">
+                            <a href="/settings/licence" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                                <img src="{{ url_for('static', filename='key.svg') }}" alt="Licence"
+                                     class="inline-block w-4 h-4 mr-1">
+                                Licence Ayarları
+                            </a>
+                        </li>
+                    </ul>
+                </li>
             </ul>
         </div>
-        <div class="flex-none">
-            <a href="{{ url_for('logout') }}" class="text-gray-600 hover:text-gray-900">
-                Çıkış Yap
+        <div class="flex-none relative">
+            <a href="#" id="user-menu" class="block px-3 py-1 text-gray-600 hover:text-gray-900">
+                {{ session['username'] }}
             </a>
+            <ul id="user-dropdown" class="absolute right-0 mt-1 w-48 bg-white shadow rounded z-10 hidden">
+                <li>
+                    <a href="/profile" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                        <img src="{{ url_for('static', filename='user.svg') }}" alt="Profile"
+                             class="inline-block w-4 h-4 mr-1">
+                        Profilim
+                    </a>
+                </li>
+                <li>
+                    <a href="{{ url_for('logout') }}" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                        <img src="{{ url_for('static', filename='logout.svg') }}" alt="Profile"
+                             class="inline-block w-4 h-4 mr-1">
+                        Çıkış Yap
+                    </a>
+                </li>
+            </ul>
         </div>
     </div>
 </nav>
@@ -35,5 +89,34 @@
         &copy; 2025 KUPLAY AI. All rights reserved.
     </div>
 </footer>
+
+<script>
+    document.getElementById('settings-link').addEventListener('click', function (event) {
+        event.preventDefault();
+        const settingsDropdown = document.getElementById('settings-dropdown');
+        settingsDropdown.classList.toggle('hidden');
+    });
+
+    document.getElementById('user-menu').addEventListener('click', function (event) {
+        event.preventDefault();
+        const userDropdown = document.getElementById('user-dropdown');
+        userDropdown.classList.toggle('hidden');
+    });
+
+    document.addEventListener('click', function (event) {
+        const settingsDropdown = document.getElementById('settings-dropdown');
+        const settingsLink = document.getElementById('settings-link');
+        const userDropdown = document.getElementById('user-dropdown');
+        const userMenu = document.getElementById('user-menu');
+
+        if (!settingsLink.contains(event.target) && !settingsDropdown.contains(event.target)) {
+            settingsDropdown.classList.add('hidden');
+        }
+        if (!userMenu.contains(event.target) && !userDropdown.contains(event.target)) {
+            userDropdown.classList.add('hidden');
+        }
+    });
+</script>
+
 </body>
 </html>

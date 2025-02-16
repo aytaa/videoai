@@ -1,0 +1,37 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="flex justify-between items-center mb-4">
+    <h2 class="text-base font-medium">Kamera Ayarları</h2>
+    <a href="{{ url_for('new_camera') }}" class="bg-blue-600 shadow-lg text-white px-2 py-1 text-[15px] rounded">
+       + Kamera Ekle
+    </a>
+</div>
+
+<div class="mx-auto overflow-hidden rounded border border-gray-300">
+    <table class="min-w-full text-[15px]">
+        <thead>
+            <tr class="bg-gray-200">
+                <th class="border px-2 py-1 text-center">Ad</th>
+                <th class="border px-2 py-1 text-center">Şehir</th>
+                <th class="border px-2 py-1 text-center">İlçe</th>
+                <th class="border px-2 py-1 text-center">Kavşak</th>
+                <th class="border px-2 py-1 text-center">m3u8 URL</th>
+                <th class="border px-2 py-1 text-center">Durum</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for cam in cameras %}
+            <tr class="bg-white">
+                <td class="border px-2 py-1 text-center">{{ cam.name }}</td>
+                <td class="border px-2 py-1 text-center">{{ cam.city }}</td>
+                <td class="border px-2 py-1 text-center">{{ cam.district }}</td>
+                <td class="border px-2 py-1 text-center">{{ cam.intersection or '-' }}</td>
+                <td class="border px-2 py-1 text-center">{{ cam.m3u8_url or '-' }}</td>
+                <td class="border px-2 py-1 text-center">{{ cam.status }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

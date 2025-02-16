@@ -1,0 +1,17 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="text-center">
+    <!-- SVG İkonu -->
+    <svg xmlns="http://www.w3.org/2000/svg" class="h-20 w-20 text-gray-400 mx-auto mb-4" fill="none" viewBox="0 0 24 24"
+         stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+    </svg>
+    <h3 class="text-lg mb-4">Sayfa bulunamadı</h3>
+    <p class="text-gray-600 mb-6">Maalesef, aradığınız sayfa bulunamadı.</p>
+    <a href="/" class="text-blue-600 px-4 py-2 rounded hover:text-blue-800">
+        Ana Sayfaya Dön
+    </a>
+</div>
+{% endblock %}

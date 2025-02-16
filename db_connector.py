@@ -1,14 +1,14 @@
-# db_connector.py
+import os
 import mysql.connector
 from mysql.connector import pooling
 
-# Doğrudan sabit değerlerle veritabanı yapılandırması (Docker ortamında 'db' kullanılıyor)
+# Ortam değişkenleri ile veritabanı yapılandırması
 db_config = {
-    'host': "db",         # "localhost" yerine MySQL container servis adı: "db"
-    'port': 3306,
-    'user': "root",
-    'password': "example",
-    'database': "mydatabase"
+    'host': os.environ.get("DB_HOST", "localhost"),
+    'port': int(os.environ.get("DB_PORT", 3306)),
+    'user': os.environ.get("DB_USER", "root"),
+    'password': os.environ.get("DB_PASSWORD", "Odak1098"),
+    'database': os.environ.get("DB_NAME", "mydatabase")
 }
 
 connection_pool = pooling.MySQLConnectionPool(
@@ -16,6 +16,7 @@ connection_pool = pooling.MySQLConnectionPool(
     pool_size=5,
     **db_config
 )
+
 
 def get_connection():
     try:

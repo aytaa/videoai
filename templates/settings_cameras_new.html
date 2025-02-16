@@ -1,0 +1,86 @@
+{% extends "layout.html" %}
+
+{% block content %}
+
+<h3 class="text-lg mb-4">Yeni Kamera Ekle</h3>
+<div class="border border-gray-300 bg-white p-4 rounded">
+    <form action="{{ url_for('new_camera') }}" method="POST" class="space-y-4">
+        <div class="grid grid-cols-2 gap-4">
+            <div>
+                <label for="name" class="block text-sm font-medium text-gray-700">Ad</label>
+                <input type="text" name="name" id="name" class="border rounded w-full px-2 py-1.5" required>
+            </div>
+            <div>
+                <label for="description" class="block text-sm font-medium text-gray-700">Açıklama</label>
+                <input type="text" name="description" id="description" class="border rounded w-full px-2 py-1.5">
+            </div>
+        </div>
+        <div class="grid grid-cols-2 gap-4">
+            <div>
+                <label for="city" class="block text-sm font-medium text-gray-700">Şehir</label>
+                <input type="text" name="city" id="city" class="border rounded w-full px-2 py-1.5" required>
+            </div>
+            <div>
+                <label for="district" class="block text-sm font-medium text-gray-700">İlçe</label>
+                <input type="text" name="district" id="district" class="border rounded w-full px-2 py-1.5" required>
+            </div>
+        </div>
+        <div class="grid grid-cols-2 gap-4">
+            <div>
+                <label for="intersection" class="block text-sm font-medium text-gray-700">Kavşak/Cadde</label>
+                <input type="text" name="intersection" id="intersection" class="border rounded w-full px-2 py-1.5">
+            </div>
+            <div>
+                <label for="status" class="block text-sm font-medium text-gray-700">Durum</label>
+                <select name="status" id="status" class="border rounded w-full px-2 py-1.5">
+                    <option value="active" selected>Aktif</option>
+                    <option value="inactive">Pasif</option>
+                    <option value="maintenance">Bakım</option>
+                </select>
+            </div>
+        </div>
+        <div class="grid grid-cols-2 gap-4">
+            <div>
+                <label for="latitude" class="block text-sm font-medium text-gray-700">Enlem</label>
+                <input type="text" name="latitude" id="latitude" class="border rounded w-full px-2 py-1.5">
+            </div>
+            <div>
+                <label for="longitude" class="block text-sm font-medium text-gray-700">Boylam</label>
+                <input type="text" name="longitude" id="longitude" class="border rounded w-full px-2 py-1.5">
+            </div>
+        </div>
+        <!-- IP Adresi ve m3u8 URL yan yana -->
+        <div class="grid grid-cols-2 gap-4">
+            <div>
+                <label for="ip_address" class="block text-sm font-medium text-gray-700">IP Adresi</label>
+                <input type="text" name="ip_address" id="ip_address" class="border rounded w-full px-2 py-1.5">
+            </div>
+            <div>
+                <label for="m3u8_url" class="block text-sm font-medium text-gray-700">m3u8 URL</label>
+                <input type="text" name="m3u8_url" id="m3u8_url" class="border rounded w-full px-2 py-1.5"
+                       placeholder="m3u8 URL girerseniz IP kullanılmayacaktır">
+            </div>
+        </div>
+        <div class="grid grid-cols-2 gap-4">
+            <div>
+                <label for="installation_date" class="block text-sm font-medium text-gray-700">Kurulum Tarihi</label>
+                <input type="date" name="installation_date" id="installation_date"
+                       class="border rounded w-full px-2 py-1">
+            </div>
+            <div>
+                <label for="camera_type" class="block text-sm font-medium text-gray-700">Kamera Tipi</label>
+                <input type="text" name="camera_type" id="camera_type" class="border rounded w-full px-2 py-1.5"
+                       placeholder="örneğin: fixed, PTZ">
+            </div>
+        </div>
+        <div class="flex justify-end space-x-3">
+            <a href="{{ url_for('settings_cameras') }}" class="bg-gray-500 text-white px-2 py-1 shadow rounded">
+                Vazgeç
+            </a>
+            <button type="submit" class="bg-blue-600 text-white px-2 py-1 shadow rounded">
+                Kaydet
+            </button>
+        </div>
+    </form>
+</div>
+{% endblock %}

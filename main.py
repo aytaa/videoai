@@ -33,6 +33,7 @@ totalMotorcycles = 0
 stream_url = "https://hls.ibb.gov.tr/tkm4/hls/102.stream/chunklist.m3u8"
 ALLOWED_CLASSES = ['car', 'motorcycle']
 
+
 # -----------------------------
 # Fonksiyon: Ağ (Network) bilgisi
 # -----------------------------
@@ -66,6 +67,7 @@ def get_network_info(interface="eth0"):
 
     return info
 
+
 # -----------------------------
 # Fonksiyon: Sistem (System) bilgisi
 # -----------------------------
@@ -98,10 +100,12 @@ def get_system_info():
 
     return info
 
+
 # -----------------------------
 # YOLO model yükleme
 # -----------------------------
 model = YOLO("yolo11n.pt")  # YOLO11N modeli kullanılıyor
+
 
 # -----------------------------
 # CentroidTracker
@@ -166,6 +170,7 @@ class CentroidTracker:
                 for col in unusedCols:
                     self.register(inputCentroids[col])
         return self.objects
+
 
 # -----------------------------
 # TrackableObject
@@ -238,7 +243,8 @@ def gen_frames():
 
             # 3) Tracker'ların güncellenmesi
             car_objects = car_tracker.update(np.array(car_centroids) if car_centroids else np.empty((0, 2)))
-            motorcycle_objects = motorcycle_tracker.update(np.array(motorcycle_centroids) if motorcycle_centroids else np.empty((0, 2)))
+            motorcycle_objects = motorcycle_tracker.update(
+                np.array(motorcycle_centroids) if motorcycle_centroids else np.empty((0, 2)))
 
             # 4) Araba objeleri için çizim
             for (objectID, centroid) in car_objects.items():
@@ -291,6 +297,7 @@ def gen_frames():
 
     cap.release()
 
+
 # -----------------------------
 # Rotalar
 # -----------------------------
@@ -300,14 +307,25 @@ def home():
         return redirect(url_for('login'))
     network_data = get_network_info(interface="eth0")
     system_data = get_system_info()
-    return render_template("home.html", network=network_data, system=system_data)
+    return render_template("home.html", network=network_data, system=system_data, active_page="home")
 
 
 @app.route('/live')
 def live():
     if not session.get('logged_in'):
         return redirect(url_for('login'))
-    return render_template("live.html", stream_url=stream_url)
+
+    # Veritabanından m3u8 URL'si dolu kameraları çekelim
+    conn = get_connection()
+    cursor = conn.cursor(dictionary=True)
+    query = "SELECT * FROM cameras WHERE m3u8_url IS NOT NULL AND m3u8_url <> ''"
+    cursor.execute(query)
+    cameras = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
+    return render_template("live.html", stream_url=stream_url, cameras=cameras, active_page="live")
+
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -376,6 +394,108 @@ def counts():
     })
 
 
+@app.route('/settings/cameras')
+def settings_cameras():
+    if not session.get('logged_in'):
+        return redirect(url_for('login'))
+
+    conn = get_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT * FROM cameras")
+    cameras = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
+    return render_template("settings_cameras.html", cameras=cameras, active_page="settings_cameras")
+
+
+@app.route('/settings/cameras/new', methods=['GET', 'POST'])
+def new_camera():
+    if not session.get('logged_in'):
+        return redirect(url_for('login'))
+
+    if request.method == 'POST':
+        name = request.form.get('name')
+        description = request.form.get('description')
+        city = request.form.get('city')
+        district = request.form.get('district')
+        intersection = request.form.get('intersection')
+        address = request.form.get('address')
+        latitude = request.form.get('latitude')
+        longitude = request.form.get('longitude')
+        ip_address = request.form.get('ip_address')
+        m3u8_url = request.form.get('m3u8_url')
+        installation_date = request.form.get('installation_date')
+        camera_type = request.form.get('camera_type')
+        status = request.form.get('status')
+
+        conn = get_connection()
+        cursor = conn.cursor()
+        query = """
+            INSERT INTO cameras 
+            (name, description, city, district, intersection, address, latitude, longitude, ip_address, m3u8_url, installation_date, camera_type, status)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """
+        cursor.execute(query, (
+            name, description, city, district, intersection, address,
+            latitude, longitude, ip_address, m3u8_url, installation_date,
+            camera_type, status
+        ))
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        flash("Kamera başarıyla eklendi.")
+        return redirect(url_for('settings_cameras'))
+
+    return render_template("settings_cameras_new.html")
+
+
+@app.route('/settings/user')
+def settings_users():
+    if not session.get('logged_in'):
+        return redirect(url_for('login'))
+
+    conn = get_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT * FROM users")
+    users = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
+    return render_template("settings_users.html", users=users, active_page="settings_users")
+
+
+@app.route('/settings/user/new', methods=['GET', 'POST'])
+def new_user():
+    if not session.get('logged_in'):
+        return redirect(url_for('login'))
+
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+        role = 'admin'
+
+        conn = get_connection()
+        cursor = conn.cursor()
+        query = """
+            INSERT INTO users 
+            (username, password, role)
+            VALUES (%s, %s, %s)
+        """
+        cursor.execute(query, (
+            username, password, role
+        ))
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        flash("Kullanıcı başarıyla eklendi.")
+        return redirect(url_for('settings_users'))
+
+    return render_template("settings_users_new.html")
+
+
 # -----------------------------
 # Yeni Rota: Gerçek zamanlı sistem bilgisi JSON
 # -----------------------------
@@ -383,6 +503,11 @@ def counts():
 def system_info():
     info = get_system_info()
     return jsonify(info)
+
+
+@app.errorhandler(404)
+def not_found(error):
+    return render_template("404.html"), 404
 
 
 # -----------------------------

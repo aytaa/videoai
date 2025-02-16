@@ -1,0 +1,33 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="flex justify-between items-center mb-4">
+    <h2 class="text-base font-medium">Kullanıcı Ayarları</h2>
+    <a href="{{ url_for('new_user') }}" class="bg-blue-600 shadow-lg text-white px-2 py-1 text-[15px] rounded">
+        + Kullanıcı Ekle
+    </a>
+</div>
+
+<div class="mx-auto overflow-hidden rounded border border-gray-300">
+    <table class="min-w-full text-[15px]">
+        <thead>
+        <tr class="bg-gray-200">
+            <th class="border px-2 py-1 text-center">ID</th>
+            <th class="border px-2 py-1 text-center">Kullanıcı Adı</th>
+            <th class="border px-2 py-1 text-center">Role</th>
+            <th class="border px-2 py-1 text-center">Oluşturulma</th>
+        </tr>
+        </thead>
+        <tbody>
+        {% for user in users %}
+        <tr class="bg-white">
+            <td class="border px-2 py-1 text-center">{{ user.id }}</td>
+            <td class="border px-2 py-1 text-center">{{ user.username }}</td>
+            <td class="border px-2 py-1 text-center">{{ user.role }}</td>
+            <td class="border px-2 py-1 text-center">{{ user.created_at }}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}
