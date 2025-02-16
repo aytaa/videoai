@@ -30,8 +30,11 @@ app.secret_key = "e7af6fde-a043-4ccb-bc11-56b5c2e78962"
 # -----------------------------
 totalCars = 0
 totalMotorcycles = 0
+totalTrucks = 0
+totalBus = 0
 stream_url = "https://hls.ibb.gov.tr/tkm4/hls/102.stream/chunklist.m3u8"
-ALLOWED_CLASSES = ['car', 'motorcycle']
+
+ALLOWED_CLASSES = ['car', 'motorcycle', 'truck', 'bus']
 
 
 # -----------------------------
@@ -67,7 +70,6 @@ def get_network_info(interface="eth0"):
 
     return info
 
-
 # -----------------------------
 # Fonksiyon: Sistem (System) bilgisi
 # -----------------------------
@@ -100,12 +102,10 @@ def get_system_info():
 
     return info
 
-
 # -----------------------------
 # YOLO model yükleme
 # -----------------------------
 model = YOLO("yolo11n.pt")  # YOLO11N modeli kullanılıyor
-
 
 # -----------------------------
 # CentroidTracker
@@ -171,7 +171,6 @@ class CentroidTracker:
                     self.register(inputCentroids[col])
         return self.objects
 
-
 # -----------------------------
 # TrackableObject
 # -----------------------------
@@ -181,119 +180,126 @@ class TrackableObject:
         self.centroids = [centroid]
         self.counted = False
 
-
 # -----------------------------
 # Video frame generator (YOLO)
 # -----------------------------
 
 def gen_frames():
-    global totalCars, totalMotorcycles, stream_url
+    global totalCars, totalMotorcycles, totalTrucks, totalBus, stream_url
 
+    # Video yakalama için daha uzun timeout
     cap = cv2.VideoCapture(stream_url)
+    cap.set(cv2.CAP_PROP_BUFFERSIZE, 3)  # Buffer size'ı ayarla
+
     if not cap.isOpened():
         print("Video akışı açılamadı! Yeniden bağlanıyor...")
+        time.sleep(1)  # Yeniden bağlanma öncesi bekle
         cap.release()
         cap = cv2.VideoCapture(stream_url)
 
-    car_tracker = CentroidTracker(maxDisappeared=40)
-    motorcycle_tracker = CentroidTracker(maxDisappeared=40)
-    trackableCars = {}
-    trackableMotorcycles = {}
+    # Tracker'lar
+    trackers = {
+        'car': CentroidTracker(maxDisappeared=5),
+        'motorcycle': CentroidTracker(maxDisappeared=5),
+        'truck': CentroidTracker(maxDisappeared=5),
+        'bus': CentroidTracker(maxDisappeared=5)
+    }
 
-    # FPS hesaplaması için başlangıç zamanı
-    prev_time = time.time()
+    trackable_objects = {
+        'car': {},
+        'motorcycle': {},
+        'truck': {},
+        'bus': {}
+    }
+
+    # Frame işleme için sayaç
+    frame_count = 0
+    skip_frames = 2
 
     while True:
-        ret, frame = cap.read()
-        if not ret or frame is None:
-            print("Video akışı kesildi, tekrar bağlanılıyor...")
-            cap.release()
-            cap = cv2.VideoCapture(stream_url)
-            continue
-
-        # FPS hesaplama: Geçen süre üzerinden fps değeri bulunuyor
-        current_time = time.time()
-        elapsed = current_time - prev_time
-        fps = 1.0 / elapsed if elapsed > 0 else 0.0
-        prev_time = current_time
-
         try:
-            # 1) YOLO tahmini
-            results = model.predict(frame, conf=0.3, verbose=False)
-            car_centroids = []
-            motorcycle_centroids = []
+            ret, frame = cap.read()
+            if not ret or frame is None:
+                print("Video akışı kesildi, tekrar bağlanılıyor...")
+                time.sleep(1)
+                cap.release()
+                cap = cv2.VideoCapture(stream_url)
+                continue
 
-            # 2) Bounding box çizimi ve centroid hesaplama
-            if len(results) > 0:
-                det = results[0]
-                if det.boxes is not None:
-                    for box in det.boxes.data.cpu().numpy():
-                        x1, y1, x2, y2, conf, cls_id = box
-                        class_name = model.names[int(cls_id)]
-                        if class_name in ALLOWED_CLASSES:
-                            cv2.rectangle(frame, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 2)
-                            cv2.putText(frame, f"{class_name} {conf:.2f}", (int(x1), int(y1) - 10),
-                                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-                            cx = int((x1 + x2) / 2)
-                            cy = int((y1 + y2) / 2)
+            frame_count += 1
+            process_this_frame = frame_count % skip_frames == 0
+
+            if process_this_frame:
+                # YOLO tahminini yap
+                with torch.no_grad():  # Gradient hesaplamasını devre dışı bırak
+                    results = model.predict(frame, conf=0.35, verbose=False)
+
+                centroids = {class_name: [] for class_name in ALLOWED_CLASSES}
+
+                if len(results) > 0:
+                    det = results[0]
+                    if det.boxes is not None:
+                        boxes = det.boxes.data.cpu().numpy()
+                        for box in boxes:
+                            x1, y1, x2, y2, conf, cls_id = box
+                            class_name = model.names[int(cls_id)]
+
+                            if class_name in ALLOWED_CLASSES:
+                                # Bounding box ve etiket çizimi
+                                cv2.rectangle(frame, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 2)
+                                cv2.putText(frame, f"{class_name}", (int(x1), int(y1) - 10),
+                                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+
+                                # Centroid hesaplama
+                                cx = int((x1 + x2) / 2)
+                                cy = int((y1 + y2) / 2)
+                                centroids[class_name].append((cx, cy))
+
+                # Her sınıf için tracker güncelleme ve nesne sayma
+                for class_name in ALLOWED_CLASSES:
+                    current_centroids = np.array(centroids[class_name]) if centroids[class_name] else np.empty((0, 2))
+                    objects = trackers[class_name].update(current_centroids)
+
+                    for (objectID, centroid) in objects.items():
+                        to = trackable_objects[class_name].get(objectID, None)
+
+                        if to is None:
+                            to = TrackableObject(objectID, centroid)
                             if class_name == 'car':
-                                car_centroids.append((cx, cy))
+                                totalCars += 1
                             elif class_name == 'motorcycle':
-                                motorcycle_centroids.append((cx, cy))
+                                totalMotorcycles += 1
+                            elif class_name == 'truck':
+                                totalTrucks += 1
+                            elif class_name == 'bus':
+                                totalBus += 1
+                        else:
+                            to.centroids.append(centroid)
+                        trackable_objects[class_name][objectID] = to
 
-            # 3) Tracker'ların güncellenmesi
-            car_objects = car_tracker.update(np.array(car_centroids) if car_centroids else np.empty((0, 2)))
-            motorcycle_objects = motorcycle_tracker.update(
-                np.array(motorcycle_centroids) if motorcycle_centroids else np.empty((0, 2)))
-
-            # 4) Araba objeleri için çizim
-            for (objectID, centroid) in car_objects.items():
-                to = trackableCars.get(objectID, None)
-                if to is None:
-                    to = TrackableObject(objectID, centroid)
-                    totalCars += 1  # Yeni araba tespit edildi
-                else:
-                    to.centroids.append(centroid)
-                trackableCars[objectID] = to
-                cv2.putText(frame, f"Car ID {objectID}", (centroid[0] - 10, centroid[1] - 10),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
-                cv2.circle(frame, (centroid[0], centroid[1]), 4, (0, 0, 255), -1)
-
-            # 4.5) Motosiklet objeleri için çizim
-            for (objectID, centroid) in motorcycle_objects.items():
-                to = trackableMotorcycles.get(objectID, None)
-                if to is None:
-                    to = TrackableObject(objectID, centroid)
-                    totalMotorcycles += 1  # Yeni motosiklet tespit edildi
-                else:
-                    to.centroids.append(centroid)
-                trackableMotorcycles[objectID] = to
-                cv2.putText(frame, f"Motorcycle ID {objectID}", (centroid[0] - 10, centroid[1] - 10),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
-                cv2.circle(frame, (centroid[0], centroid[1]), 4, (255, 0, 0), -1)
-
-            # 5) Sayaçların ekrana yazdırılması (sol üstte)
+            # Sayaçları göster
             cv2.putText(frame, f"Total Cars: {totalCars}", (10, 30),
                         cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
             cv2.putText(frame, f"Total Motorcycles: {totalMotorcycles}", (10, 60),
                         cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
+            cv2.putText(frame, f"Total Trucks: {totalTrucks}", (10, 90),
+                        cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
+            cv2.putText(frame, f"Total Buses: {totalBus}", (10, 120),
+                        cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 165, 255), 2)
 
-            # 6) FPS bilgisinin sağ üst köşeye eklenmesi
-            frame_height, frame_width = frame.shape[:2]
-            cv2.putText(frame, f"FPS: {fps:.2f}", (frame_width - 180, 30),
-                        cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
-
-            # 7) Görüntüyü MJPEG formatında gönderme
-            ret2, buffer = cv2.imencode('.jpg', frame)
-            if not ret2:
+            # Frame'i JPEG formatında kodla ve gönder
+            success, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
+            if not success:
                 continue
+
             frame_bytes = buffer.tobytes()
             yield (b'--frame\r\n'
                    b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
 
         except Exception as e:
             print(f"[Hata]: {str(e)}")
-            break
+            time.sleep(0.1)  # Hata durumunda kısa bir bekleme
+            continue
 
     cap.release()
 
@@ -314,8 +320,6 @@ def home():
 def live():
     if not session.get('logged_in'):
         return redirect(url_for('login'))
-
-    # Veritabanından m3u8 URL'si dolu kameraları çekelim
     conn = get_connection()
     cursor = conn.cursor(dictionary=True)
     query = "SELECT * FROM cameras WHERE m3u8_url IS NOT NULL AND m3u8_url <> ''"
@@ -364,12 +368,14 @@ def logout():
 
 @app.route('/set_stream', methods=['POST'])
 def set_stream():
-    global stream_url, totalCars, totalMotorcycles
+    global stream_url, totalCars, totalMotorcycles, totalTrucks, totalBus
     url = request.form.get('stream_url')
     if url:
         stream_url = url.strip()
         totalCars = 0
         totalMotorcycles = 0
+        totalTrucks = 0
+        totalBus = 0
     return redirect(url_for('live'))
 
 
@@ -380,9 +386,11 @@ def video_feed():
 
 @app.route('/reset_counts', methods=['POST'])
 def reset_counts():
-    global totalCars, totalMotorcycles
+    global totalCars, totalMotorcycles, totalTrucks, totalBus
     totalCars = 0
     totalMotorcycles = 0
+    totalTrucks = 0
+    totalBus = 0
     return redirect(url_for('live'))
 
 
@@ -390,7 +398,9 @@ def reset_counts():
 def counts():
     return jsonify({
         "car": totalCars,
-        "motorcycle": totalMotorcycles
+        "motorcycle": totalMotorcycles,
+        "totalTrucks": totalTrucks,
+        "totalBus": totalBus,
     })
 
 
@@ -499,6 +509,7 @@ def new_user():
 # -----------------------------
 # Yeni Rota: Gerçek zamanlı sistem bilgisi JSON
 # -----------------------------
+
 @app.route('/system_info')
 def system_info():
     info = get_system_info()
@@ -508,7 +519,6 @@ def system_info():
 @app.errorhandler(404)
 def not_found(error):
     return render_template("404.html"), 404
-
 
 # -----------------------------
 # Uygulama çalıştırma

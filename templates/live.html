@@ -8,13 +8,13 @@
             <img id="video-stream" src="{{ url_for('video_feed') }}" alt="Video Akışı"
                  class="w-full rounded shadow" onerror="handleError()">
             <!-- Hata Overlay -->
-            <div id="error-overlay" class="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50 hidden">
+            <div id="error-overlay"
+                 class="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50 hidden">
                 <span class="text-white text-xl">Yüklenemedi</span>
             </div>
         </div>
     </div>
 
-    <!-- Sağ Kolon: Sayım Bilgisi & Kamera Seçimi -->
     <div class="w-full lg:w-1/4 flex flex-col gap-4">
         <!-- Sayım Bilgisi Kartı -->
         <div class="bg-white rounded shadow p-4">
@@ -27,6 +27,14 @@
                 <tr class="border-b">
                     <td class="py-1">Araba:</td>
                     <td class="py-1 text-right" id="car-count">0</td>
+                </tr>
+                <tr class="border-b">
+                    <td class="py-1">Tır :</td>
+                    <td class="py-1 text-right" id="truck-count">0</td>
+                </tr>
+                <tr class="border-b">
+                    <td class="py-1">Otobüs :</td>
+                    <td class="py-1 text-right" id="bus-count">0</td>
                 </tr>
             </table>
             <form action="{{ url_for('reset_counts') }}" method="POST" class="mt-3">
@@ -43,11 +51,11 @@
             <select id="camera-dropdown" class="w-full border rounded px-2 py-1 text-sm">
                 <option value="">-- Kamera Seçiniz --</option>
                 {% for cam in cameras %}
-                    {% if cam.m3u8_url %}
-                        <option value="{{ cam.m3u8_url }}" {% if stream_url == cam.m3u8_url %}selected{% endif %}>
-                            {{ cam.name }}
-                        </option>
-                    {% endif %}
+                {% if cam.m3u8_url %}
+                <option value="{{ cam.m3u8_url }}" {% if stream_url== cam.m3u8_url %}selected{% endif %}>
+                    {{ cam.name }}
+                </option>
+                {% endif %}
                 {% endfor %}
             </select>
         </div>
@@ -61,12 +69,12 @@
 
     // Dropdown'da seçim yapıldığında, eğer bir kamera seçilmişse, POST isteği ile stream URL güncelle
     document.getElementById('camera-dropdown').addEventListener('change', function () {
-        var url = this.value;
+        const url = this.value;
         if (!url) return;
 
         var formData = new FormData();
         formData.append('stream_url', url);
-        fetch('{{ url_for("set_stream") }}', { method: 'POST', body: formData })
+        fetch('{{ url_for("set_stream") }}', {method: 'POST', body: formData})
             .then(response => {
                 if (response.ok) {
                     // Sayfa yeniden yüklenerek yeni stream URL'si kullanılsın
@@ -84,10 +92,13 @@
             let data = await response.json();
             document.getElementById('motor-count').textContent = data.motorcycle;
             document.getElementById('car-count').textContent = data.car;
+            document.getElementById('truck-count').textContent = data.totalTrucks;
+            document.getElementById('bus-count').textContent = data.totalBus;
         } catch (error) {
             console.error('Error fetching counts:', error);
         }
     }
+
     setInterval(fetchCounts, 1000);
 </script>
 {% endblock %}
